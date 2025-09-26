@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Agent {
+  id        String   @id @default(uuid())
+  name      String
+  apiKey    String   @unique
+  metadata  Json?
+  createdAt DateTime @default(now())
+  episodes  Episode[]
+}
+
+model Episode {
+  id        String   @id @default(uuid())
+  agent     Agent    @relation(fields: [agentId], references: [id])
+  agentId   String
+  title     String?
+  content   String
+  attributes Json?
+  createdAt DateTime @default(now())
+}
+
+model Memory {
+  id           String   @id @default(uuid())
+  canonicalText String
+  type          String
+  metadata      Json?
+  vector        Bytes? @ignore
+  usageCount    Int     @default(0)
+  lastAccessed  DateTime?
+  createdAt     DateTime @default(now())
+  isObsolete    Boolean @default(false)
+  linksFrom     MemoryLink[] @relation("SourceLinks")
+  linksTo       MemoryLink[] @relation("TargetLinks")
+}
+
+model MemoryLink {
+  id        String   @id @default(uuid())
+  source    Memory   @relation("SourceLinks", fields: [sourceId], references: [id])
+  sourceId  String
+  target    Memory   @relation("TargetLinks", fields: [targetId], references: [id])
+  targetId  String
+  linkType  String
+  weight    Float    @default(1.0)
+  createdAt DateTime @default(now())
+}
+
+model MemoryAudit {
+  id        String   @id @default(uuid())
+  actor     String
+  action    String
+  details   Json
+  createdAt DateTime @default(now())
+}

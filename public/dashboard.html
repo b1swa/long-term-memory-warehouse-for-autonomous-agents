@@ -1,0 +1,162 @@
+<html>
+  <head>
+    <title>Memory Dashboard (Live)</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix"></script>
+    <script src="https://cdn.jsdelivr.net/npm/graphology"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sigma@2.4.0/build/sigma.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.js"></script>
+
+    <style>
+      body { font-family: Arial, sans-serif; margin: 20px; }
+      nav { margin-bottom: 10px; }
+      nav button { margin-right: 10px; padding: 8px; cursor: pointer; }
+      .tab { display: none; }
+      .tab.active { display: block; }
+      #container { 
+        width: 100%;
+        height: 600px;
+        min-width: 400px;  /* avoid 0 width */
+        min-height: 400px; /* avoid 0 height */
+        border: 1px solid #ccc; /* helps visualize */ }
+    </style>
+  </head>
+  <body>
+    <h2>Agentic-AI Memory Dashboard (Live Refresh)</h2>
+    <nav>
+      <button onclick="showTab('cluster')">Clusters</button>
+      <button onclick="showTab('graph')">Graph</button>
+      <button onclick="showTab('heatmap')">Heatmap</button>
+      <button onclick="refreshDashboard()">🔄 Refresh Now</button>
+    </nav>
+
+    <div id="graph" class="tab">
+        <h3>Memory Graph</h3>
+        <div id="container"></div>
+        <p id="graphEmpty" style="display:none;color:gray;">No graph data available.</p>
+      </div>
+
+    <div id="cluster" class="tab">
+      <h3>Memory Clusters</h3>
+      <div id="clusterPlot" style="width:100%;height:600px;"></div>
+      <p id="clusterEmpty" style="display:none;color:gray;">No cluster data available.</p>
+    </div>
+
+    
+
+    <div id="heatmap" class="tab">
+      <h3>Usage Heatmap</h3>
+      <canvas id="heatmapCanvas" width="800" height="400"></canvas>
+      <p id="heatmapEmpty" style="display:none;color:gray;">No heatmap data available.</p>
+    </div>
+
+    <script>
+      function showTab(id) {
+        document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+        const el = document.getElementById(id);
+        el.classList.add('active');
+
+        if (id === 'graph') {
+            // re-run Sigma layout only after tab is visible
+            refreshDashboard();
+        }
+      }
+      showTab('cluster'); // default tab
+
+      let heatmapChart = null;
+      
+      async function refreshDashboard() {
+        try {
+          
+          const res = await fetch('/api/dashboard-data');
+          const { clusterData, graph, heatmapData } = await res.json();
+
+          // --- Clusters ---
+          if (clusterData && clusterData.length > 0) {
+            document.getElementById('clusterEmpty').style.display = 'none';
+            Plotly.newPlot('clusterPlot', clusterData);
+          } else {
+            document.getElementById('clusterEmpty').style.display = 'block';
+            document.getElementById('clusterPlot').innerHTML = '';
+          }
+
+          // --- Heatmap ---
+      if (heatmapData && heatmapData.length > 0) {
+        document.getElementById('heatmapEmpty').style.display = 'none';
+        const ctx = document.getElementById('heatmapCanvas').getContext('2d');
+
+        if (heatmapChart) {
+          heatmapChart.destroy(); // clean up previous chart
+        }
+
+        heatmapChart = new Chart(ctx, {
+          type: 'matrix',
+          data: {
+            datasets: [{
+              label: 'Memory Usage',
+              data: heatmapData.map(d => ({
+                x: d.x,
+                y: d.y,
+                v: d.v
+              })),
+              width: 20,
+              height: 20,
+              backgroundColor: ctx => {
+                const value = ctx.dataset.data[ctx.dataIndex].v;
+                return `rgba(0, 100, 255, ${Math.min(1, value / 10)})`;
+              }
+            }]
+          },
+          options: {
+            scales: {
+              x: {
+                type: 'time',
+                time: { unit: 'day' },
+                title: { display: true, text: 'Created At' }
+              },
+              y: {
+                beginAtZero: true,
+                title: { display: true, text: 'Usage Count' }
+              }
+            }
+          }
+        });
+      } else {
+        document.getElementById('heatmapEmpty').style.display = 'block';
+        if (heatmapChart) {
+          heatmapChart.destroy();
+          heatmapChart = null;
+        }
+      }
+      console.log("Refreshing dashboard",graph);
+         // --- Graph ---
+          if (graph && graph.nodes && graph.nodes.length > 0) {
+            document.getElementById('graphEmpty').style.display = 'none';
+            const container = document.getElementById('container');
+            container.innerHTML = '';
+
+            const g = new graphology.Graph();
+            graph.nodes.forEach(n => g.addNode(n.id, { label: n.label, x: n.x, y: n.y, size: n.size }));
+            graph.edges.forEach(e => g.addEdge(e.source, e.target, { weight: e.weight }));
+            console.log("Graph",g);
+
+            new Sigma(g, container);
+          } else {
+            document.getElementById('graphEmpty').style.display = 'block';
+            document.getElementById('container').innerHTML = '';
+          }
+
+        
+
+        } catch (err) {
+          console.error('Dashboard fetch failed:', err);
+        }
+      }
+
+      refreshDashboard();
+      setInterval(refreshDashboard, 30000);
+    </script>
+  </body>
+</html>
